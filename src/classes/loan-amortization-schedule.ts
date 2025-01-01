@@ -1,5 +1,5 @@
-import { ExtraPayment } from "./extra-payment.interface";
-import { Statement } from "./statement.interface";
+import { ExtraPayment } from "../interfaces/extra-payment.interface";
+import { Statement } from "../interfaces/statement.interface";
 
 export class LoanAmortizationSchedule {
   private assetValue: number;

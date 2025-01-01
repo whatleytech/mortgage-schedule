@@ -5,7 +5,7 @@ import {
   loanTermYears,
   extraPayments,
 } from "./inputs";
-import { LoanAmortizationSchedule } from "./loan-amortization-schedule";
+import { LoanAmortizationSchedule } from "./classes/loan-amortization-schedule";
 
 // Initialize LoanAmortizationSchedule without specifying minimumPayment,
 // so it will be calculated based on the standard mortgage formula.
