@@ -6,9 +6,16 @@ import {
 } from "../interfaces/loan-parameters.interface";
 import {
   LoanValidationError,
-  NoExtraPaymentsError,
   InvalidExtraPaymentError,
 } from "../errors/loan-errors";
+
+// Define interface for summary statistics
+interface SummaryStats {
+  totalPayments: number;
+  totalInterest: number;
+  totalPrincipal: number;
+  monthsToPayoff: number;
+}
 
 /**
  * A class that calculates and generates loan amortization schedules.
@@ -375,6 +382,227 @@ export class LoanAmortizationSchedule {
     console.log(`Annual Interest Rate: ${this.interestRate}%`);
     console.log(`Loan Term: ${this.termInYears} years`);
     console.log(`Monthly Payment: $${this.minimumPayment.toLocaleString()}\n`);
+  }
+
+  /**
+   * Calculates summary statistics for a loan schedule
+   *
+   * @param schedule - The loan schedule to calculate statistics for
+   * @returns Summary statistics for the loan schedule
+   */
+  calculateSummaryStats(schedule: Statement[]): SummaryStats {
+    const totalPayments = schedule.reduce(
+      (sum, payment) => sum + payment.payment,
+      0
+    );
+    const totalInterest = schedule.reduce(
+      (sum, payment) => sum + payment.amountTowardInterest,
+      0
+    );
+    const totalPrincipal = schedule.reduce(
+      (sum, payment) => sum + payment.amountTowardPrincipal,
+      0
+    );
+    const monthsToPayoff = schedule.length;
+
+    return {
+      totalPayments,
+      totalInterest,
+      totalPrincipal,
+      monthsToPayoff,
+    };
+  }
+
+  /**
+   * Displays the first N months of a loan schedule
+   *
+   * @param title - The title to display above the table
+   * @param data - The loan schedule data
+   * @param count - The number of months to display
+   */
+  displayFirstMonths(title: string, data: Statement[], count: number): void {
+    console.log(`\n${title}:`);
+    console.table(data.slice(0, count));
+  }
+
+  /**
+   * Displays the last N months of a loan schedule
+   *
+   * @param title - The title to display above the table
+   * @param data - The loan schedule data
+   * @param count - The number of months to display
+   */
+  displayLastMonths(title: string, data: Statement[], count: number): void {
+    console.log(`\n${title}:`);
+    console.table(data.slice(-count));
+  }
+
+  /**
+   * Displays summary statistics for a loan schedule
+   *
+   * @param title - The title to display above the statistics
+   * @param stats - The summary statistics to display
+   */
+  displaySummaryStats(title: string, stats: SummaryStats): void {
+    console.log(`\n${title}:`);
+    console.log(`  Total Payments: $${stats.totalPayments.toLocaleString()}`);
+    console.log(`  Total Interest: $${stats.totalInterest.toLocaleString()}`);
+    console.log(`  Total Principal: $${stats.totalPrincipal.toLocaleString()}`);
+    console.log(`  Months to Payoff: ${stats.monthsToPayoff}`);
+  }
+
+  /**
+   * Displays savings from extra payments
+   *
+   * @param standardStats - Statistics for the standard loan schedule
+   * @param adjustedStats - Statistics for the adjusted loan schedule with extra payments
+   */
+  displaySavings(
+    standardStats: SummaryStats,
+    adjustedStats: SummaryStats
+  ): void {
+    const interestSavings =
+      standardStats.totalInterest - adjustedStats.totalInterest;
+    const monthsSaved =
+      standardStats.monthsToPayoff - adjustedStats.monthsToPayoff;
+
+    console.log("\nSavings from Extra Payments:");
+    console.log(`  Interest Saved: $${interestSavings.toLocaleString()}`);
+    console.log(`  Months Saved: ${monthsSaved}`);
+  }
+
+  /**
+   * Displays information about the current position in the loan lifecycle
+   *
+   * @param loanStartDate - The date the loan started
+   * @param currentDate - The current date
+   */
+  displayCurrentPosition(loanStartDate: Date, currentDate: Date): void {
+    const position = this.findPositionByDate(loanStartDate, currentDate);
+
+    console.log("\nCurrent Position in Loan Lifecycle:");
+    console.log(
+      `  Current Balance: $${position.currentBalance.toLocaleString()}`
+    );
+    console.log(`  Current Month: ${position.currentMonth}`);
+    console.log(`  Months Elapsed: ${position.monthsElapsed}`);
+    console.log(`  Months Remaining: ${position.monthsRemaining}`);
+    console.log(`  Years Remaining: ${position.yearsRemaining.toFixed(1)}`);
+    console.log(
+      `  Percentage Complete: ${position.percentageComplete.toFixed(1)}%`
+    );
+    console.log(
+      `  Percentage Remaining: ${position.percentageRemaining.toFixed(1)}%`
+    );
+
+    if (position.statement) {
+      console.log("\nCurrent Month Details:");
+      console.log(
+        `  Starting Balance: $${position.statement.startingBalance.toLocaleString()}`
+      );
+      console.log(`  Payment: $${position.statement.payment.toLocaleString()}`);
+      console.log(
+        `  Toward Principal: $${position.statement.amountTowardPrincipal.toLocaleString()}`
+      );
+      console.log(
+        `  Toward Interest: $${position.statement.amountTowardInterest.toLocaleString()}`
+      );
+      console.log(
+        `  Ending Balance: $${position.statement.endingBalance.toLocaleString()}`
+      );
+      console.log(
+        `  Loan-to-Value: ${position.statement.loanToValuePercentage.toFixed(
+          2
+        )}%`
+      );
+      console.log(
+        `  Equity: $${position.statement.equityValue.toLocaleString()} (${position.statement.equityPercentage.toFixed(
+          2
+        )}%)`
+      );
+    }
+  }
+
+  /**
+   * Runs a complete loan analysis and displays all relevant information
+   *
+   * @param extraPayments - Array of extra payments to apply to the loan
+   * @param loanStartDate - The date the loan started
+   * @param currentDate - The current date
+   */
+  runLoanAnalysis(
+    extraPayments: ExtraPayment[],
+    loanStartDate: Date,
+    currentDate: Date
+  ): void {
+    // Generate standard schedule
+    const standardSchedule = this.generateSchedule();
+
+    // Apply extra payments and generate adjusted schedule
+    const loanWithExtraPayments = this.applyExtraPayments(extraPayments);
+    const adjustedSchedule = loanWithExtraPayments.generateAdjustedSchedule();
+
+    // Display loan summary
+    this.displaySummary();
+
+    // Display first months of both schedules
+    this.displayFirstMonths(
+      "First 24 Months of Standard Amortization Schedule",
+      standardSchedule,
+      24
+    );
+    this.displayFirstMonths(
+      "First 24 Months of Adjusted Amortization Schedule",
+      adjustedSchedule,
+      24
+    );
+
+    // Display last months of both schedules
+    this.displayLastMonths(
+      "Last 3 Months of Standard Amortization Schedule",
+      standardSchedule,
+      3
+    );
+    this.displayLastMonths(
+      "Last 3 Months of Adjusted Amortization Schedule",
+      adjustedSchedule,
+      3
+    );
+
+    // Calculate and display statistics
+    const standardStats = this.calculateSummaryStats(standardSchedule);
+    const adjustedStats = this.calculateSummaryStats(adjustedSchedule);
+
+    this.displaySummaryStats(
+      "Summary Statistics - Standard Schedule",
+      standardStats
+    );
+    this.displaySummaryStats(
+      "Summary Statistics - Adjusted Schedule",
+      adjustedStats
+    );
+
+    // Display savings
+    this.displaySavings(standardStats, adjustedStats);
+
+    // Display current position in loan lifecycle
+    loanWithExtraPayments.displayCurrentPosition(loanStartDate, currentDate);
+  }
+
+  /**
+   * Applies multiple extra payments to the loan schedule
+   *
+   * @param extraPayments - Array of extra payments to apply
+   * @returns A new LoanAmortizationSchedule instance with all extra payments applied
+   */
+  private applyExtraPayments(
+    extraPayments: ExtraPayment[]
+  ): LoanAmortizationSchedule {
+    let result: LoanAmortizationSchedule = this;
+    for (const extra of extraPayments) {
+      result = result.addExtraPayment(extra.extraAmount, extra.startMonth);
+    }
+    return result;
   }
 
   /**

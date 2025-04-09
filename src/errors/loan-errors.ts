@@ -19,18 +19,6 @@ export class LoanValidationError extends LoanError {
 }
 
 /**
- * Error thrown when attempting to generate an adjusted schedule without extra payments
- */
-export class NoExtraPaymentsError extends LoanError {
-  constructor() {
-    super(
-      "No extra payments found. Please add extra payments using the addExtraPayment method before generating an adjusted schedule."
-    );
-    this.name = "NoExtraPaymentsError";
-  }
-}
-
-/**
  * Error thrown when attempting to add an invalid extra payment
  */
 export class InvalidExtraPaymentError extends LoanError {

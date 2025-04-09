@@ -1,10 +1,8 @@
 import { LoanAmortizationSchedule } from "../classes/loan-amortization-schedule";
 import {
   LoanValidationError,
-  NoExtraPaymentsError,
   InvalidExtraPaymentError,
 } from "../errors/loan-errors";
-import { LOAN_CONSTRAINTS } from "../interfaces/loan-parameters.interface";
 
 describe("LoanAmortizationSchedule", () => {
   // Test data
@@ -130,11 +128,12 @@ describe("LoanAmortizationSchedule", () => {
   });
 
   describe("generateAdjustedSchedule", () => {
-    it("should throw NoExtraPaymentsError when no extra payments are added", () => {
+    it("should return the standard schedule when no extra payments are added", () => {
       const loan = new LoanAmortizationSchedule(validLoanParams);
-      expect(() => loan.generateAdjustedSchedule()).toThrow(
-        NoExtraPaymentsError
-      );
+      const standardSchedule = loan.generateSchedule();
+      const adjustedSchedule = loan.generateAdjustedSchedule();
+
+      expect(adjustedSchedule).toEqual(standardSchedule);
     });
 
     it("should generate a valid adjusted schedule with extra payments", () => {
@@ -160,6 +159,57 @@ describe("LoanAmortizationSchedule", () => {
       const adjustedSchedule = loanWithExtraPayment.generateAdjustedSchedule();
 
       expect(adjustedSchedule.length).toBeLessThan(standardSchedule.length);
+    });
+  });
+
+  describe("calculateSummaryStats", () => {
+    it("should calculate correct summary statistics", () => {
+      const loan = new LoanAmortizationSchedule(validLoanParams);
+      const schedule = loan.generateSchedule();
+      const stats = loan.calculateSummaryStats(schedule);
+
+      expect(stats).toHaveProperty("totalPayments");
+      expect(stats).toHaveProperty("totalInterest");
+      expect(stats).toHaveProperty("totalPrincipal");
+      expect(stats).toHaveProperty("monthsToPayoff");
+
+      // Verify that total payments equals total interest plus total principal
+      // Using a lower precision (1 decimal place) to account for rounding differences
+      expect(stats.totalPayments).toBeCloseTo(
+        stats.totalInterest + stats.totalPrincipal,
+        1
+      );
+
+      // Verify that months to payoff equals the length of the schedule
+      expect(stats.monthsToPayoff).toBe(schedule.length);
+    });
+  });
+
+  describe("findPositionByDate", () => {
+    it("should find the correct position in the loan lifecycle", () => {
+      const loan = new LoanAmortizationSchedule(validLoanParams);
+      const loanStartDate = new Date(2020, 0, 1); // January 1, 2020
+      const currentDate = new Date(2022, 5, 15); // June 15, 2022
+
+      const position = loan.findPositionByDate(loanStartDate, currentDate);
+
+      expect(position).toHaveProperty("currentMonth");
+      expect(position).toHaveProperty("monthsElapsed");
+      expect(position).toHaveProperty("monthsRemaining");
+      expect(position).toHaveProperty("yearsRemaining");
+      expect(position).toHaveProperty("percentageComplete");
+      expect(position).toHaveProperty("percentageRemaining");
+      expect(position).toHaveProperty("statement");
+      expect(position).toHaveProperty("currentBalance");
+
+      // Verify that months elapsed is approximately 29 (2.5 years)
+      // The calculation gives 29 months between Jan 2020 and Jun 2022
+      expect(position.monthsElapsed).toBe(29);
+
+      // Verify that percentage complete plus percentage remaining equals 100
+      expect(
+        position.percentageComplete + position.percentageRemaining
+      ).toBeCloseTo(100, 2);
     });
   });
 
