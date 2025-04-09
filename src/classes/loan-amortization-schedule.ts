@@ -1,237 +1,314 @@
 import { ExtraPayment } from "../interfaces/extra-payment.interface";
 import { Statement } from "../interfaces/statement.interface";
+import {
+  LoanParameters,
+  LOAN_CONSTRAINTS,
+} from "../interfaces/loan-parameters.interface";
+import {
+  LoanValidationError,
+  NoExtraPaymentsError,
+  InvalidExtraPaymentError,
+} from "../errors/loan-errors";
 
+/**
+ * A class that calculates and generates loan amortization schedules.
+ * Supports standard amortization and schedules with extra payments.
+ *
+ * This class is designed to be immutable - all operations that would modify state
+ * return a new instance instead.
+ *
+ * @example
+ * ```typescript
+ * // Create a new loan schedule
+ * const loan = new LoanAmortizationSchedule({
+ *   assetValue: 300000,
+ *   percentagePutDown: 20,
+ *   interestRate: 5,
+ *   termInYears: 30
+ * });
+ *
+ * // Generate a standard amortization schedule
+ * const schedule = loan.generateSchedule();
+ *
+ * // Add an extra payment and get a new instance
+ * const loanWithExtraPayment = loan.addExtraPayment(100, 12);
+ *
+ * // Generate an adjusted schedule with the extra payment
+ * const adjustedSchedule = loanWithExtraPayment.generateAdjustedSchedule();
+ * ```
+ */
 export class LoanAmortizationSchedule {
-  private assetValue: number;
-  private percentagePutDown: number; // Percentage (e.g., 20 for 20%)
-  private loanAmount: number; // Derived from assetValue and percentagePutDown
-  private interestRate: number; // Annual interest rate in percentage (e.g., 5 for 5%)
-  private termInYears: number;
-  private minimumPayment: number;
-  private downPayment: number; // Calculated based on assetValue and percentagePutDown
-  private extraPayments: ExtraPayment[]; // List to maintain history of extra payments
+  private readonly assetValue: number;
+  private readonly percentagePutDown: number;
+  private readonly loanAmount: number;
+  private readonly interestRate: number;
+  private readonly termInYears: number;
+  private readonly minimumPayment: number;
+  private readonly downPayment: number;
+  private readonly extraPayments: ExtraPayment[];
 
   /**
-   * Constructs a new LoanAmortizationSchedule instance.
-   * @param assetValue - The total value of the asset being financed.
-   * @param percentagePutDown - The percentage of the asset value provided as a down payment.
-   * @param interestRate - Annual interest rate in percentage (e.g., 5 for 5%).
-   * @param termInYears - The term of the loan in years.
-   * @param minimumPayment - The fixed monthly payment amount (optional).
+   * Creates a new loan amortization schedule.
+   *
+   * @param params - The loan parameters
+   * @throws {LoanValidationError} if any parameters are invalid
    */
-  constructor(
-    assetValue: number,
-    percentagePutDown: number,
-    interestRate: number,
-    termInYears: number,
-    minimumPayment?: number // Optional: If not provided, calculate based on standard formula
-  ) {
-    // Basic validations
-    if (assetValue <= 0) {
-      throw new Error("Asset value must be greater than zero.");
-    }
-    if (percentagePutDown < 0 || percentagePutDown > 100) {
-      throw new Error("Percentage put down must be between 0 and 100.");
-    }
-    if (interestRate < 0) {
-      throw new Error("Interest rate cannot be negative.");
-    }
-    if (termInYears <= 0) {
-      throw new Error("Term in years must be greater than zero.");
-    }
+  constructor(params: LoanParameters) {
+    this.validateInputs(params);
 
-    this.assetValue = assetValue;
-    this.percentagePutDown = percentagePutDown;
-    this.downPayment = parseFloat(
-      (this.assetValue * (this.percentagePutDown / 100)).toFixed(2)
-    );
-    this.loanAmount = parseFloat(
-      (this.assetValue - this.downPayment).toFixed(2)
-    );
-    this.interestRate = interestRate;
-    this.termInYears = termInYears;
-    this.extraPayments = []; // Initialize the extra payments history
+    this.assetValue = params.assetValue;
+    this.percentagePutDown = params.percentagePutDown;
+    this.interestRate = params.interestRate;
+    this.termInYears = params.termInYears;
 
-    // If minimumPayment is provided, use it. Otherwise, calculate based on the standard mortgage formula.
-    if (minimumPayment !== undefined) {
-      if (minimumPayment <= 0) {
-        throw new Error("Minimum payment must be greater than zero.");
-      }
-      this.minimumPayment = minimumPayment;
-    } else {
-      this.minimumPayment = parseFloat(
-        this.calculateMonthlyPayment().toFixed(2)
+    // Calculate derived values
+    this.downPayment = this.calculateDownPayment();
+    this.loanAmount = this.calculateLoanAmount();
+    this.minimumPayment =
+      params.minimumPayment !== undefined
+        ? params.minimumPayment
+        : this.calculateStandardMonthlyPayment();
+
+    // Initialize with empty extra payments
+    this.extraPayments = [];
+  }
+
+  /**
+   * Validates all input parameters.
+   *
+   * @param params - The loan parameters to validate
+   * @throws {LoanValidationError} if any parameters are invalid
+   */
+  private validateInputs(params: LoanParameters): void {
+    if (params.assetValue <= LOAN_CONSTRAINTS.MIN_ASSET_VALUE) {
+      throw new LoanValidationError(
+        `Asset value must be at least $${LOAN_CONSTRAINTS.MIN_ASSET_VALUE.toLocaleString()}.`,
+        "assetValue"
       );
     }
+
+    if (params.assetValue > LOAN_CONSTRAINTS.MAX_ASSET_VALUE) {
+      throw new LoanValidationError(
+        `Asset value cannot exceed $${LOAN_CONSTRAINTS.MAX_ASSET_VALUE.toLocaleString()}.`,
+        "assetValue"
+      );
+    }
+
+    if (params.percentagePutDown < 0 || params.percentagePutDown > 100) {
+      throw new LoanValidationError(
+        "Percentage put down must be between 0 and 100.",
+        "percentagePutDown"
+      );
+    }
+
+    if (params.interestRate < LOAN_CONSTRAINTS.MIN_INTEREST_RATE) {
+      throw new LoanValidationError(
+        "Interest rate cannot be negative.",
+        "interestRate"
+      );
+    }
+
+    if (params.interestRate > LOAN_CONSTRAINTS.MAX_INTEREST_RATE) {
+      throw new LoanValidationError(
+        `Interest rate cannot exceed ${LOAN_CONSTRAINTS.MAX_INTEREST_RATE}%.`,
+        "interestRate"
+      );
+    }
+
+    if (params.termInYears < LOAN_CONSTRAINTS.MIN_TERM_YEARS) {
+      throw new LoanValidationError(
+        `Loan term must be at least ${LOAN_CONSTRAINTS.MIN_TERM_YEARS} years.`,
+        "termInYears"
+      );
+    }
+
+    if (params.termInYears > LOAN_CONSTRAINTS.MAX_TERM_YEARS) {
+      throw new LoanValidationError(
+        `Loan term cannot exceed ${LOAN_CONSTRAINTS.MAX_TERM_YEARS} years.`,
+        "termInYears"
+      );
+    }
+
+    if (params.minimumPayment !== undefined && params.minimumPayment <= 0) {
+      throw new LoanValidationError(
+        "Minimum payment must be greater than zero.",
+        "minimumPayment"
+      );
+    }
+  }
+
+  /**
+   * Calculates the down payment amount based on asset value and percentage.
+   */
+  private calculateDownPayment(): number {
+    return parseFloat(
+      (this.assetValue * (this.percentagePutDown / 100)).toFixed(2)
+    );
+  }
+
+  /**
+   * Calculates the loan amount (asset value minus down payment).
+   */
+  private calculateLoanAmount(): number {
+    return parseFloat((this.assetValue - this.downPayment).toFixed(2));
   }
 
   /**
    * Calculates the standard monthly payment using the mortgage formula.
-   * @returns The calculated monthly payment.
+   *
+   * The formula used is:
+   * P = L[r(1+r)^n]/[(1+r)^n-1]
+   *
+   * Where:
+   * P = Monthly payment
+   * L = Loan amount
+   * r = Monthly interest rate (annual rate / 12)
+   * n = Total number of payments (years * 12)
    */
-  private calculateMonthlyPayment(): number {
+  private calculateStandardMonthlyPayment(): number {
     const monthlyRate = this.interestRate / 100 / 12;
     const numberOfPayments = this.termInYears * 12;
+
     if (monthlyRate === 0) {
       // If interest rate is 0%
       return this.loanAmount / numberOfPayments;
     }
-    return (
-      (this.loanAmount *
-        monthlyRate *
-        Math.pow(1 + monthlyRate, numberOfPayments)) /
-      (Math.pow(1 + monthlyRate, numberOfPayments) - 1)
+
+    return parseFloat(
+      (
+        (this.loanAmount *
+          monthlyRate *
+          Math.pow(1 + monthlyRate, numberOfPayments)) /
+        (Math.pow(1 + monthlyRate, numberOfPayments) - 1)
+      ).toFixed(2)
     );
   }
 
   /**
-   * Adds an extra payment to the extra payments history.
-   * @param extraAmount - The additional amount to pay each month toward the principal.
-   * @param startMonth - The month number from which to start making extra payments.
+   * Adds an extra payment to the loan schedule.
+   * Returns a new instance with the extra payment added.
+   *
+   * @param extraAmount - The additional amount to pay each month toward the principal
+   * @param startMonth - The month number from which to start making extra payments
+   * @returns A new LoanAmortizationSchedule instance with the extra payment added
+   * @throws {InvalidExtraPaymentError} if parameters are invalid
    */
-  addExtraPayment(extraAmount: number, startMonth: number): void {
-    // Validate input parameters
+  addExtraPayment(
+    extraAmount: number,
+    startMonth: number
+  ): LoanAmortizationSchedule {
     if (extraAmount <= 0) {
-      throw new Error("Extra payment amount must be greater than zero.");
+      throw new InvalidExtraPaymentError(
+        "Extra payment amount must be greater than zero."
+      );
     }
+
+    const totalMonths = this.termInYears * 12;
     if (
       !Number.isInteger(startMonth) ||
       startMonth < 1 ||
-      startMonth > this.termInYears * 12
+      startMonth > totalMonths
     ) {
-      throw new Error(
-        `Start month must be an integer between 1 and ${this.termInYears * 12}.`
+      throw new InvalidExtraPaymentError(
+        `Start month must be an integer between 1 and ${totalMonths}.`
       );
     }
 
-    // Add the extra payment to the history
-    this.extraPayments.push({ extraAmount, startMonth });
+    // Create a new instance with the extra payment added
+    const newInstance = new LoanAmortizationSchedule({
+      assetValue: this.assetValue,
+      percentagePutDown: this.percentagePutDown,
+      interestRate: this.interestRate,
+      termInYears: this.termInYears,
+      minimumPayment: this.minimumPayment,
+    });
 
-    // Sort the extra payments by startMonth to ensure correct application order
-    this.extraPayments.sort((a, b) => a.startMonth - b.startMonth);
+    // Add the new extra payment to the existing ones
+    const allExtraPayments = [
+      ...this.extraPayments,
+      { extraAmount, startMonth },
+    ];
+    allExtraPayments.sort((a, b) => a.startMonth - b.startMonth);
+
+    // Use Object.assign to copy the extra payments to the new instance
+    // This is a bit of a hack since we're modifying a readonly property
+    // In a real-world scenario, you might want to redesign this part
+    Object.defineProperty(newInstance, "extraPayments", {
+      value: allExtraPayments,
+      writable: false,
+      configurable: false,
+    });
+
+    return newInstance;
   }
 
   /**
-   * Generates the regular loan amortization schedule without any extra payments.
-   * @returns An array of Statement objects representing each month's payment details.
+   * Generates the standard loan amortization schedule without extra payments.
+   *
+   * @returns An array of Statement objects representing each month's payment details
    */
   generateSchedule(): Statement[] {
-    const schedule: Statement[] = [];
-    const monthlyInterestRate = this.interestRate / 100 / 12;
-    const totalMonths = this.termInYears * 12;
-    let balance = this.loanAmount;
-
-    for (let month = 1; month <= totalMonths; month++) {
-      const startingBalance = balance;
-
-      // Calculate interest for the month
-      const interest = startingBalance * monthlyInterestRate;
-
-      // Determine the payment amount
-      let payment = this.minimumPayment;
-      if (startingBalance + interest <= this.minimumPayment) {
-        payment = startingBalance + interest;
-      }
-
-      const amountTowardInterest = interest;
-      const amountTowardPrincipal = payment - amountTowardInterest;
-      const endingBalance = startingBalance - amountTowardPrincipal;
-
-      // Calculate Loan-to-Value (LTV) as both decimal and percentage
-      const loanToValue = endingBalance / this.assetValue;
-      const loanToValuePercentage = parseFloat((loanToValue * 100).toFixed(2));
-
-      // Calculate Equity in value and percentage
-      const equityValue = this.assetValue - endingBalance;
-      const equityPercentage = parseFloat(
-        ((equityValue / this.assetValue) * 100).toFixed(2)
-      );
-
-      // Push the statement for the current month
-      schedule.push({
-        month,
-        startingBalance: parseFloat(startingBalance.toFixed(2)),
-        payment: parseFloat(payment.toFixed(2)),
-        amountTowardInterest: parseFloat(amountTowardInterest.toFixed(2)),
-        amountTowardPrincipal: parseFloat(amountTowardPrincipal.toFixed(2)),
-        endingBalance: parseFloat(endingBalance.toFixed(2)),
-        loanToValue: parseFloat(loanToValue.toFixed(4)),
-        loanToValuePercentage: loanToValuePercentage,
-        equityValue: parseFloat(equityValue.toFixed(2)),
-        equityPercentage: equityPercentage,
-      });
-
-      // Update the balance for the next month
-      balance = endingBalance;
-
-      // If the loan is paid off, exit the loop
-      if (balance <= 0) {
-        break;
-      }
-    }
-
-    return schedule;
+    return this.generateAmortizationSchedule(false);
   }
 
   /**
-   * Generates an adjusted amortization schedule with extra payments toward the principal.
-   * Maintains the history of extra payments and applies them accordingly.
-   * @returns An array of Statement objects representing each month's adjusted payment details.
+   * Generates an adjusted amortization schedule with extra payments.
+   *
+   * @returns An array of Statement objects representing each month's adjusted payment details
    */
   generateAdjustedSchedule(): Statement[] {
     if (this.extraPayments.length === 0) {
-      throw new Error(
-        "No extra payments found. Please add extra payments using the addExtraPayment method before generating an adjusted schedule."
-      );
+      return this.generateAmortizationSchedule(false);
     }
 
+    return this.generateAmortizationSchedule(true);
+  }
+
+  /**
+   * Generates the amortization schedule with or without extra payments.
+   *
+   * @param includeExtraPayments - Whether to include extra payments in the schedule
+   * @returns An array of Statement objects
+   */
+  private generateAmortizationSchedule(
+    includeExtraPayments: boolean
+  ): Statement[] {
     const schedule: Statement[] = [];
     const monthlyInterestRate = this.interestRate / 100 / 12;
     const totalMonths = this.termInYears * 12;
     let balance = this.loanAmount;
 
-    // Create a copy of the extraPayments array to track which payments have been applied
-    const extraPaymentsCopy = [...this.extraPayments];
-
     for (let month = 1; month <= totalMonths; month++) {
       const startingBalance = balance;
-
-      // Calculate interest for the month
       const interest = startingBalance * monthlyInterestRate;
 
-      // Determine the payment amount
+      // Calculate payment amount
       let payment = this.minimumPayment;
 
-      // Add all extra payments that have started by this month
-      let applicableExtraPayments = 0;
-      for (const extraPayment of extraPaymentsCopy) {
-        if (month >= extraPayment.startMonth) {
-          applicableExtraPayments += extraPayment.extraAmount;
-        }
+      // Add extra payments if applicable
+      if (includeExtraPayments) {
+        payment += this.calculateExtraPaymentsForMonth(month);
       }
 
-      payment += applicableExtraPayments;
-
-      // Adjust the final payment if necessary
-      if (startingBalance + interest <= payment) {
+      // For the last payment, ensure we pay exactly the remaining balance plus interest
+      if (month === totalMonths || startingBalance + interest <= payment) {
         payment = startingBalance + interest;
       }
 
+      // Calculate payment breakdown
       const amountTowardInterest = interest;
       const amountTowardPrincipal = payment - amountTowardInterest;
       const endingBalance = startingBalance - amountTowardPrincipal;
 
-      // Calculate Loan-to-Value (LTV) as both decimal and percentage
-      const loanToValue = endingBalance / this.assetValue;
-      const loanToValuePercentage = parseFloat((loanToValue * 100).toFixed(2));
+      // Calculate LTV and equity metrics
+      const {
+        loanToValue,
+        loanToValuePercentage,
+        equityValue,
+        equityPercentage,
+      } = this.calculateEquityMetrics(endingBalance);
 
-      // Calculate Equity in value and percentage
-      const equityValue = this.assetValue - endingBalance;
-      const equityPercentage = parseFloat(
-        ((equityValue / this.assetValue) * 100).toFixed(2)
-      );
-
-      // Push the statement for the current month
+      // Add statement for current month
       schedule.push({
         month,
         startingBalance: parseFloat(startingBalance.toFixed(2)),
@@ -239,24 +316,54 @@ export class LoanAmortizationSchedule {
         amountTowardInterest: parseFloat(amountTowardInterest.toFixed(2)),
         amountTowardPrincipal: parseFloat(amountTowardPrincipal.toFixed(2)),
         endingBalance: parseFloat(endingBalance.toFixed(2)),
-        loanToValue: parseFloat(loanToValue.toFixed(4)),
-        loanToValuePercentage: loanToValuePercentage,
+        loanToValue,
+        loanToValuePercentage,
         equityValue: parseFloat(equityValue.toFixed(2)),
-        equityPercentage: equityPercentage,
+        equityPercentage,
       });
 
-      // Update the balance for the next month
       balance = endingBalance;
 
       // If the loan is paid off, exit the loop
-      if (balance <= 0) {
-        break;
-      }
+      if (balance <= 0.01) break;
     }
 
     return schedule;
   }
 
+  /**
+   * Calculates the total extra payments applicable for a given month.
+   */
+  private calculateExtraPaymentsForMonth(month: number): number {
+    return this.extraPayments
+      .filter((extraPayment) => month >= extraPayment.startMonth)
+      .reduce((total, extraPayment) => total + extraPayment.extraAmount, 0);
+  }
+
+  /**
+   * Calculates loan-to-value and equity metrics.
+   */
+  private calculateEquityMetrics(endingBalance: number) {
+    const loanToValue = parseFloat(
+      (endingBalance / this.assetValue).toFixed(4)
+    );
+    const loanToValuePercentage = parseFloat((loanToValue * 100).toFixed(2));
+    const equityValue = this.assetValue - endingBalance;
+    const equityPercentage = parseFloat(
+      ((equityValue / this.assetValue) * 100).toFixed(2)
+    );
+
+    return {
+      loanToValue,
+      loanToValuePercentage,
+      equityValue,
+      equityPercentage,
+    };
+  }
+
+  /**
+   * Displays a summary of the loan details.
+   */
   displaySummary(): void {
     console.log(`Asset Value: $${this.assetValue.toLocaleString()}`);
     console.log(
@@ -265,10 +372,8 @@ export class LoanAmortizationSchedule {
       }%): $${this.downPayment.toLocaleString()}`
     );
     console.log(`Loan Amount: $${this.loanAmount.toLocaleString()}`);
-    console.log(
-      `Annual Interest Rate: ${this.interestRate}%`,
-      `\nLoan Term: ${this.termInYears} years`
-    );
+    console.log(`Annual Interest Rate: ${this.interestRate}%`);
+    console.log(`Loan Term: ${this.termInYears} years`);
     console.log(`Monthly Payment: $${this.minimumPayment.toLocaleString()}\n`);
   }
 }
