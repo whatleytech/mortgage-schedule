@@ -4,6 +4,8 @@ import {
   annualInterestRate,
   loanTermYears,
   extraPayments,
+  loanStartDate,
+  currentDate,
 } from "./inputs";
 import { LoanAmortizationSchedule } from "./classes/loan-amortization-schedule";
 import { Statement } from "./interfaces/statement.interface";
@@ -120,6 +122,57 @@ const displaySavings = (
 };
 
 /**
+ * Displays information about the current position in the loan lifecycle
+ */
+const displayCurrentPosition = (
+  loan: LoanAmortizationSchedule,
+  loanStartDate: Date,
+  currentDate: Date
+): void => {
+  const position = loan.findPositionByDate(loanStartDate, currentDate);
+
+  console.log("\nCurrent Position in Loan Lifecycle:");
+  console.log(
+    `  Current Balance: $${position.currentBalance.toLocaleString()}`
+  );
+  console.log(`  Current Month: ${position.currentMonth}`);
+  console.log(`  Months Elapsed: ${position.monthsElapsed}`);
+  console.log(`  Months Remaining: ${position.monthsRemaining}`);
+  console.log(`  Years Remaining: ${position.yearsRemaining.toFixed(1)}`);
+  console.log(
+    `  Percentage Complete: ${position.percentageComplete.toFixed(1)}%`
+  );
+  console.log(
+    `  Percentage Remaining: ${position.percentageRemaining.toFixed(1)}%`
+  );
+
+  if (position.statement) {
+    console.log("\nCurrent Month Details:");
+    console.log(
+      `  Starting Balance: $${position.statement.startingBalance.toLocaleString()}`
+    );
+    console.log(`  Payment: $${position.statement.payment.toLocaleString()}`);
+    console.log(
+      `  Toward Principal: $${position.statement.amountTowardPrincipal.toLocaleString()}`
+    );
+    console.log(
+      `  Toward Interest: $${position.statement.amountTowardInterest.toLocaleString()}`
+    );
+    console.log(
+      `  Ending Balance: $${position.statement.endingBalance.toLocaleString()}`
+    );
+    console.log(
+      `  Loan-to-Value: ${position.statement.loanToValuePercentage.toFixed(2)}%`
+    );
+    console.log(
+      `  Equity: $${position.statement.equityValue.toLocaleString()} (${position.statement.equityPercentage.toFixed(
+        2
+      )}%)`
+    );
+  }
+};
+
+/**
  * Main function to run the loan amortization analysis
  */
 const runLoanAnalysis = (): void => {
@@ -172,6 +225,9 @@ const runLoanAnalysis = (): void => {
 
   // Display savings
   displaySavings(standardStats, adjustedStats);
+
+  // Display current position in loan lifecycle
+  displayCurrentPosition(loanWithExtraPayments, loanStartDate, currentDate);
 };
 
 // Run the analysis

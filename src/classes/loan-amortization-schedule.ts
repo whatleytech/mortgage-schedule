@@ -376,4 +376,70 @@ export class LoanAmortizationSchedule {
     console.log(`Loan Term: ${this.termInYears} years`);
     console.log(`Monthly Payment: $${this.minimumPayment.toLocaleString()}\n`);
   }
+
+  /**
+   * Finds the current position in the loan lifecycle based on dates.
+   *
+   * @param loanStartDate - The date the loan started
+   * @param currentDate - The current date
+   * @returns Information about the current position in the loan lifecycle
+   */
+  findPositionByDate(
+    loanStartDate: Date,
+    currentDate: Date
+  ): {
+    currentMonth: number;
+    monthsElapsed: number;
+    monthsRemaining: number;
+    yearsRemaining: number;
+    percentageComplete: number;
+    percentageRemaining: number;
+    statement: Statement | null;
+    currentBalance: number;
+  } {
+    // Generate the schedule to find the position
+    const schedule = this.generateAdjustedSchedule();
+
+    // Calculate months elapsed since loan start
+    const monthsElapsed = this.calculateMonthsBetween(
+      loanStartDate,
+      currentDate
+    );
+
+    // Ensure monthsElapsed is within the loan term
+    const currentMonth = Math.min(monthsElapsed, schedule.length - 1);
+
+    // Get the statement for the current month
+    const currentStatement = schedule[currentMonth];
+
+    // Calculate remaining time
+    const monthsRemaining = schedule.length - currentMonth;
+    const yearsRemaining = monthsRemaining / 12;
+
+    // Calculate percentages
+    const percentageComplete = (currentMonth / schedule.length) * 100;
+    const percentageRemaining = 100 - percentageComplete;
+
+    return {
+      currentMonth: currentMonth + 1, // Convert to 1-based month
+      monthsElapsed,
+      monthsRemaining,
+      yearsRemaining,
+      percentageComplete,
+      percentageRemaining,
+      statement: currentStatement,
+      currentBalance: currentStatement
+        ? currentStatement.endingBalance
+        : this.loanAmount,
+    };
+  }
+
+  /**
+   * Calculates the number of months between two dates
+   */
+  private calculateMonthsBetween(startDate: Date, endDate: Date): number {
+    const yearDiff = endDate.getFullYear() - startDate.getFullYear();
+    const monthDiff = endDate.getMonth() - startDate.getMonth();
+    return yearDiff * 12 + monthDiff;
+  }
 }
