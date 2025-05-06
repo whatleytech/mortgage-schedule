@@ -390,7 +390,7 @@ export class LoanAmortizationSchedule {
    * @param schedule - The loan schedule to calculate statistics for
    * @returns Summary statistics for the loan schedule
    */
-  calculateSummaryStats(schedule: Statement[]): SummaryStats {
+  static calculateSummaryStats(schedule: Statement[]): SummaryStats {
     const totalPayments = schedule.reduce(
       (sum, payment) => sum + payment.payment,
       0
@@ -457,7 +457,7 @@ export class LoanAmortizationSchedule {
    * @param standardStats - Statistics for the standard loan schedule
    * @param adjustedStats - Statistics for the adjusted loan schedule with extra payments
    */
-  displaySavings(
+  static displaySavings(
     standardStats: SummaryStats,
     adjustedStats: SummaryStats
   ): void {
@@ -526,67 +526,24 @@ export class LoanAmortizationSchedule {
   /**
    * Runs a complete loan analysis and displays all relevant information
    *
-   * @param extraPayments - Array of extra payments to apply to the loan
    * @param loanStartDate - The date the loan started
    * @param currentDate - The current date
    */
-  runLoanAnalysis(
-    extraPayments: ExtraPayment[],
-    loanStartDate: Date,
-    currentDate: Date
-  ): void {
-    // Generate standard schedule
+  runLoanAnalysis(loanStartDate: Date, currentDate: Date): void {
     const standardSchedule = this.generateSchedule();
 
-    // Apply extra payments and generate adjusted schedule
-    const loanWithExtraPayments = this.applyExtraPayments(extraPayments);
-    const adjustedSchedule = loanWithExtraPayments.generateAdjustedSchedule();
-
-    // Display loan summary
     this.displaySummary();
 
-    // Display first months of both schedules
-    this.displayFirstMonths(
-      "First 24 Months of Standard Amortization Schedule",
-      standardSchedule,
-      24
-    );
-    this.displayFirstMonths(
-      "First 24 Months of Adjusted Amortization Schedule",
-      adjustedSchedule,
-      24
-    );
+    this.displayFirstMonths("First 24 Months", standardSchedule, 24);
 
-    // Display last months of both schedules
-    this.displayLastMonths(
-      "Last 3 Months of Standard Amortization Schedule",
-      standardSchedule,
-      3
-    );
-    this.displayLastMonths(
-      "Last 3 Months of Adjusted Amortization Schedule",
-      adjustedSchedule,
-      3
-    );
+    this.displayLastMonths("Last 3 Months", standardSchedule, 3);
 
-    // Calculate and display statistics
-    const standardStats = this.calculateSummaryStats(standardSchedule);
-    const adjustedStats = this.calculateSummaryStats(adjustedSchedule);
+    const standardStats =
+      LoanAmortizationSchedule.calculateSummaryStats(standardSchedule);
 
-    this.displaySummaryStats(
-      "Summary Statistics - Standard Schedule",
-      standardStats
-    );
-    this.displaySummaryStats(
-      "Summary Statistics - Adjusted Schedule",
-      adjustedStats
-    );
+    this.displaySummaryStats("Summary Statistics", standardStats);
 
-    // Display savings
-    this.displaySavings(standardStats, adjustedStats);
-
-    // Display current position in loan lifecycle
-    loanWithExtraPayments.displayCurrentPosition(loanStartDate, currentDate);
+    this.displayCurrentPosition(loanStartDate, currentDate);
   }
 
   /**

@@ -166,7 +166,7 @@ describe("LoanAmortizationSchedule", () => {
     it("should calculate correct summary statistics", () => {
       const loan = new LoanAmortizationSchedule(validLoanParams);
       const schedule = loan.generateSchedule();
-      const stats = loan.calculateSummaryStats(schedule);
+      const stats = LoanAmortizationSchedule.calculateSummaryStats(schedule);
 
       expect(stats).toHaveProperty("totalPayments");
       expect(stats).toHaveProperty("totalInterest");
