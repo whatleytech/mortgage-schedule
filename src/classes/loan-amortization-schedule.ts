@@ -595,9 +595,7 @@ export class LoanAmortizationSchedule {
    * @param extraPayments - Array of extra payments to apply
    * @returns A new LoanAmortizationSchedule instance with all extra payments applied
    */
-  private applyExtraPayments(
-    extraPayments: ExtraPayment[]
-  ): LoanAmortizationSchedule {
+  applyExtraPayments(extraPayments: ExtraPayment[]): LoanAmortizationSchedule {
     let result: LoanAmortizationSchedule = this;
     for (const extra of extraPayments) {
       result = result.addExtraPayment(extra.extraAmount, extra.startMonth);
